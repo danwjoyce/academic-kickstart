@@ -2,6 +2,8 @@
 title: "Alternatives to Percentage Change"
 date: 2019-04-18T19:47:56+01:00
 draft: false
+categories: [change, trajectories]
+tags: [measures]
 ---
 
 The motivation for looking at this topic was primarily my naivety and
