@@ -1,0 +1,7 @@
+"0","ggplot( ex.osc, aes( x = Time, y = X ) ) +"
+"0","  geom_point( colour = ""gray50"", size = 4 ) + "
+"0","  geom_line( colour = ""gray50"" ) +"
+"0","  ylab(TeX(""x(t)"")) +"
+"0","  xlab(TeX(""t"")) + "
+"0","  ggtitle(""Simulated Data: Damped"") +"
+"0","  dwjtheme"

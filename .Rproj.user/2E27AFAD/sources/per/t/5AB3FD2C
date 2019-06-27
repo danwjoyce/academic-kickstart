@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1558002080644.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "53761638",
+    "id" : "5AB3FD2C",
+    "lastKnownWriteTime" : 1558114736,
+    "last_content_update" : 1558114736565,
+    "path" : "~/Dropbox/Blog/technical-blog/content/post/2019-05-12-trajectories-part-two.Rmd",
+    "project_path" : "content/post/2019-05-12-trajectories-part-two.Rmd",
+    "properties" : {
+        "cursorPosition" : "99,0",
+        "last_setup_crc32" : "",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

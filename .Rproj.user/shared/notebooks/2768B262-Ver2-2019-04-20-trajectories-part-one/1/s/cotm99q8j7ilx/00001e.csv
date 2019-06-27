@@ -1,0 +1,7 @@
+"0","actual.zeta <- -0.1"
+"0","actual.eta  <- -0.5"
+"0","params <- c( zeta = -0.1, eta = -0.5 )"
+"0","times <- seq(1,100, by = 0.5)"
+"0","soln.1 <- ode(y = c(y1 = 5, y2 = -2.5), func = OscDiffEq, times = times, parms = params)"
+"2","Error in lsoda(y, times, func, parms, ...) : object 'OscDiffEq' not found
+"

@@ -1,0 +1,2 @@
+"0","kable(df[1:8,], digits = 5 ) %>%"
+"0","  kable_styling(bootstrap_options = ""striped"", full_width = F)"

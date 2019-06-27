@@ -1,0 +1,235 @@
+---
+title: "Clinical State: Part Two - Embedding"
+author: "Dan W Joyce"
+date: 2019-05-12T18:00:00+01:00
+
+
+header-includes: \usepackage{amsmath}
+image:
+  caption: ''
+  focal_point: ''
+categories: [clinical state, trajectories, dynamical systems]
+# slug: trajectories-part-one
+# substitle: Dynamical Systems
+tags: [state, modelling]
+bibliography: [./traj.bib]
+---
+
+
+
+```{r setup, include=FALSE}
+rm( list = ls() )
+
+reqd.packages <- c("ggplot2", 
+                   "ggrepel",
+                   "reshape2",
+                   "latex2exp", 
+                   "deSolve", 
+                   "kableExtra",
+                   "minpack.lm",
+                   "gridExtra",
+                   "pracma",
+                   "viridis",
+                   "dse",
+                   "blogdown")
+
+
+# to install required packages
+todo.packages <- reqd.packages[!(reqd.packages %in% installed.packages()[,"Package"])]
+if(length(todo.packages) > 0) install.packages(todo.packages)
+
+lapply(reqd.packages, require, character.only = TRUE)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+
+# globals for presentation
+dwjtheme <- theme_minimal() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        plot.title = element_text(size = rel(1.25), face = "bold", hjust = 0.5 ))
+
+# get some data
+d <- as.data.frame( read.csv( "../../../Trajectory/ex-data.csv") )
+```
+
+\newcommand{\M}[1]{\textbf{#1}}
+
+In the last post, we showed examples of how concepts from dynamical systems can be operationalised.  However, we need to have a clear model of the dynamics underlying the state and phase space to make these useful.  My view is that we rarely have this for complex clinical state - except metaphorically (i.e. mood regulation behaves *as if* it were a damped oscillator).  If we can't pin down a realistic ODE for a single state variable, it seems implausible we could find systems of coupled ODEs that would act as a useable model for clinical state and trajectory.
+
+
+The *objective* for modelling clinical state is central to the approach taken, and there are two primary objectives:
+
+  * Prediction and forecasting -- where the measure of a 'good algorithm' is extensional: the quality of predictions or forecasts marrying with observations is more important than the machinery (i.e. algorithm or model), sometimes called "black box"
+  * Inference, usually, in the tradition of statistical methods for model inference is intensional -- where the hypothesised model is itself valuable in the process of making inferences
+  
+This of course mirrors a debate in the current AI/ML *vs.* statistical literatures.  
+
+
+Advantage of the state-space approach : "The key advantage of the state space approach is that it is based on a structural analysis of the problem. The different components that make up the series, such as trend, seasonal, cycle and calendar variations, together with the effects of explanatory variables and interventions, are modelled separately before being put together in the state space model." In contrast : Box-Jenkins [ARMA, ARIMA] approach : "In contrast, the Box–Jenkins approach is a kind of ‘black box’, in which the model adopted depends purely on the data without prior analysis of the structure of the system that generated the data." Durbin and Koopman (2012)
+
+
+## Clinical State *vs* Latent State
+
+Clinical state has been defined as multidimensional measurements on a person.  However, this might be better thought of as observation (in the dynamical state space framework, e.g. kalman filtering) with the term "state" and "state space" being reserved for the unobserved (hidden, latent) state that underlies the behaviour of the observations. 
+
+## Basic Setup
+
+  * Assume that there are measurements $\M{y}_t$ of dimension $p$ -- so they exist in a $p$-dimensional space as discussed before
+  * Underneath these measurements is a lower $k$-dimensional, unobserved, latent **state** $\M{x}_t$ that evolves in time
+
+The state obeys the Markov assumptions, so the state at time $t$ ($\M{x}_t$) depends only on it's preceding state $\M{x}_{t-1}$. At any moment in time, we can describe a linear dynamical system where:
+
+  * The state evolves over time as:
+    $$\M{x}_{t+1} = \M{A}\M{x}_t + \M{w}$$
+    where $\M{A}$ is a $k \times k$ state transition matrix
+    
+  * The observed output of the system is: 
+    $$\M{y}_t = \M{C} \M{x}_t + \M{v}$$
+    where $\M{C}$ is a $p \times k$ observation (or measurement) matrix
+
+The length $k$ vector $\M{w}$ is the state evolution noise, and similarly, $\M{v}$ is the observation noise.  Both are assumed independent of each other and $\M{x}$ and $\M{y}$.  
+
+It is worth formally stating the noise vectors distribution:
+$$
+\begin{aligned}
+  \M{w} \thicksim & \mathcal{N}( \M{0}, \M{Q} ) \\
+  \M{v} \thicksim & \mathcal{N}( \M{0}, \M{R} )
+\end{aligned}
+$$
+
+
+## Some Kalman ARMA type experiments
+
+Some implementation details for R and Kalman : https://magesblog.com/post/2015-01-06-kalman-filter-example-visualised-with-r/
+
+```{r}
+require(dse)
+
+fileName <- system.file("otherdata", "eg1.dat", package="dse")
+eg1.DSE.data <- t(matrix(scan(fileName),5, 364))[, 2:5]
+
+# convert to dse based TS object
+eg1.DSE.data <- TSdata(input= eg1.DSE.data[,1,drop = F],
+                       output= eg1.DSE.data[, 2:4, drop = F])
+
+# tidy time labels
+eg1.DSE.data <-tframed(eg1.DSE.data,
+                      list(start=c(1961,3), frequency=12))
+
+seriesNamesInput(eg1.DSE.data) <- "R90"
+seriesNamesOutput(eg1.DSE.data) <- c("M1","GDPl2", "CPI")
+
+# run model estimation
+model1 <- estVARXls(eg1.DSE.data)
+model2 <- estSSMittnik(eg1.DSE.data, n=4)
+
+```
+
+```{r echo = FALSE}
+LocalLinearGradient <- function( F ) {
+  # compute local linear numerical approximation to gradient of F with window +/- 1
+  N <- length(F)
+  dF <- rep(NA, N)  
+  for( i in 2:(N-1) ) {
+    dF[i] <- ( F[i+1] - F[i-1] ) / 2
+  }
+  # boundary cases
+  dF[1] <- (F[2] - F[1])
+  dF[N] <- (F[N] - F[N-1])
+  return( dF )
+}
+```
+
+$$
+\begin{aligned}
+  \dot{y_2} &= \zeta y_2 + \eta y_1 \\
+  \dot{y_1} &= y_2
+\end{aligned}
+$$
+
+The analytic solution for this system is well understood and depends on the parameters $\zeta$ and $\eta$ -- there are three solutions for $x(t)$ depending on whether the system is damped, under-damped or critically damped -- [@Lebl2019diff] gives a helpful tutorial.  However, as we won't know the parameters in advance, we need to use numerical methods (an ODE solver) reassured that we can plug in any set of parameters to construct and visualise $x(t)$.
+
+# Simulated Example
+
+
+```{r echo = FALSE}
+# Direct implementation
+OscDiffEq <- function (t, y, params) {
+  zeta <- params["zeta"]
+  eta  <- params["eta"]
+  list(
+          c( y[2],
+             zeta * y[2] + eta * y[1]
+          )
+  )
+}
+```
+
+
+
+```{r echo = FALSE, fig.align='center', out.width="70%"}
+actual.zeta <- -0.1
+actual.eta  <- -0.5
+
+params <- c( zeta = -0.1, eta = -0.5 )
+times <- seq(1,100, by = 0.5)
+soln.1 <- ode(y = c(y1 = 5, y2 = -2.5), func = OscDiffEq, times = times, parms = params)
+
+# keep y1 and y2 (the second and first derivative respectively)
+ex.osc <- data.frame(
+            X.1  = soln.1[,"y1"], # + rnorm( n, 0, 0.25),
+            dX.1 = soln.1[,"y2"],
+            Time = soln.1[,"time"]
+)
+
+p.x <- ggplot( ex.osc ) +
+        geom_line( aes( x = Time, y = X.1 ), colour = "#984ea3" ) +
+        annotate("point", x = 1, y = 5, size = 4, colour = "#984ea3") +
+        ylab(TeX("x(t)")) +
+        xlab(TeX("t")) + 
+        ggtitle("Simulated Data: Damping") +
+        dwjtheme
+
+p.phase <- ggplot( ex.osc ) +
+        geom_path( aes( x = X.1, y = dX.1 ), colour = "#984ea3" ) +
+        annotate("point", x = ex.osc$X.1[1], y = ex.osc$dX.1[1], size = 4, colour = "#984ea3") +
+        ylab("dx(t)") +
+        xlab("x(t)") + 
+        ggtitle("Phase Plane: Damping") +
+        dwjtheme
+
+grid.arrange( p.x, p.phase, ncol = 2)
+
+```
+
+We generate some simulated data with the following parameters:
+
+  * $\zeta$ = `r actual.zeta` (the 'damping' or 'amplification')
+  * $\eta$ = `r actual.eta` (the 'frequency' of oscillations)
+
+## Embedding
+
+```{r echo = FALSE, fig.align='center', out.width="70%"}
+
+tau <- 5
+
+xt    <- ex.osc$X.1
+xt.T  <- xt[ tau:length(xt) ]
+xt.2T <- xt[ (2*tau):length(xt) ]
+
+delay.df <- data.frame(
+  xt     = xt[1:length(xt.2T)],
+  xt.T   = xt.T[1:length(xt.2T)],
+  xt.2T  = xt.2T[1:length(xt.2T)]
+)
+
+ggplot( delay.df, aes( x = xt.T, y = xt.2T ) ) +
+  geom_path() +
+  dwjtheme
+
+
+```
+
+# References
+

@@ -1,0 +1,40 @@
+"0","grid.zeta <- seq(-1.0, 1.0, by = 0.05)"
+"0","grid.eta  <- seq(-0.5, 0.5, by = 0.05)"
+"0","SSE <- matrix( NA, nrow = length(grid.zeta), ncol = length( grid.eta) )"
+"0","for( i in 1:length( grid.zeta ) ) {"
+"0","  for( j in 1:length( grid.eta ) ) {"
+"0","    SSE[ i, j ] <- sum( c( zeta = grid.zeta[i], eta = grid.eta[j] ) )    "
+"0","  }"
+"0","}"
+"0","require(plotly)"
+"2","Loading required package: plotly
+"
+"2","
+Attaching package: ‘plotly’
+
+"
+"2","The following object is masked from ‘package:latex2exp’:
+
+    TeX
+
+"
+"2","The following object is masked from ‘package:ggplot2’:
+
+    last_plot
+
+"
+"2","The following object is masked from ‘package:stats’:
+
+    filter
+
+"
+"2","The following object is masked from ‘package:graphics’:
+
+    layout
+
+"
+"0","plotly::plot_ly(z = ~log(SSE) ) %>% add_surface()"
+"2","NaNs produced"
+"2","Error in scales::col_numeric(pal, rng, na.color = na.color) : 
+  Wasn't able to determine range of domain
+"

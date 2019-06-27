@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1561623362137.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "470660555",
+    "id" : "24FF00E5",
+    "lastKnownWriteTime" : 1561632623,
+    "last_content_update" : 1561632623330,
+    "path" : "~/Dropbox/Blog/technical-blog/content/post/2019-06-26-routines-and-the-ehr.Rmd",
+    "project_path" : "content/post/2019-06-26-routines-and-the-ehr.Rmd",
+    "properties" : {
+        "cursorPosition" : "195,0",
+        "scrollLine" : "185"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
