@@ -66,6 +66,4 @@ subtitle = ""
  css_class = ""
 +++
 
-{{% alert note %}}
-Coming soon
-{{% /alert %}}
+

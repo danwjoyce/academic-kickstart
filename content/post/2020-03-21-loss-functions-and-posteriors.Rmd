@@ -1,5 +1,5 @@
 ---
-title: Loss Functions and Posteriors
+title: Loss, Risk and Point Summaries of Posterior Distributions
 author: Dan W Joyce
 date: '2020-03-21'
 slug: loss-functions-and-posteriors
@@ -10,12 +10,11 @@ output:
     
 header-includes: \usepackage{amsmath}
 
-categories: []
+categories: [R code]
 tags:
   - posterior distribution
   - loss functions
   - risk
-  - R code
 image:
   caption: ''
   focal_point: ''
@@ -23,7 +22,37 @@ image:
 bibliography: [./risk-dec.bib]
 ---
 
-```{r setup, include=FALSE}
+
+
+For a while, I've been thinking about the deployment of predictive algorithms in clinical decision support.  Specifically, about the difference between what we understand about a model's performance from the publication describing it and how this might be less informative when deployed.  In short: what is the value of knowing that a model has good balanced accuracy or a high area under the ROC curve when sat with a patient and using the tool to make a clinical decision.    
+
+Frequently in medical applications of machine learning we see summary measures of performance used to demonstrate the competence of the model typically reported as sensitivities, specificities, balanced accuracy, area under the ROC curve and so on.  These measures assume that for an input $x$ (a patient) we get an output $Y = F(x)$ representing for example, "negative" or "positive" caseness.  
+
+If the system $F$ is designed to **classify** patients, then it will deliver discrete 'yes / no' answers e.g. $Y \in \{0,1\}$; canonical examples include the [support-vector machine (SVM)](https://en.wikipedia.org/wiki/Support-vector_machine).  Baked-into these algorithms is a **decision rule** operating over a continuous value; in SVMs, for example, the decision rule classifies each patient by dichotomising the signed distance of $x$ from the class-seperating hyperplane.  If using a **classifier** makes sense in the context of it's clinical deployment you might want the algorithm to report a definitive dichotomised answer and summary measures like sensitivity and specificity (perhaps) make sense.
+
+Compare this with [logistic regression](https://en.wikipedia.org/wiki/Logistic_regression) (often used as if it were a classifier) where the purpose is to estimate the **probability of an event**, i.e. that a patient is positive or negative.  Often in these cases, the decision rule is 'bolted on' and that's when people invoke ROC curves and compute accuracies at an operating threshold that maximises the trade-off between sensitivity and specificity e.g. by [maximising Youden's J-statistic](https://en.wikipedia.org/wiki/Youden%27s_J_statistic).  It's here that the decision rule and it's deployment context matter.
+
+It seems to me that patients and clinicians would probably want more information than a pure classifier provides and most likely would prefer to know the **actual** continuous score -- the "output"" of $F(x)$.  
+
+Further, a patient and clinician might want to understand the decision rule and it's assumptions.  For example, assume for a deployed predictive model $F$ and a new patient, $F(x) = 0.79$ and this represents (or is proportional to) the likelihood of being a positive case.  The predictive model being deployed has an operating threshold of $0.80$ for declaring a positive case and this threshold was determined by maximising the trade-off between sensitivity and specificity.  Recall that sensitivity is the ratio $TP/(TP+FN)$ and specificity is the ratio $TN/(TN+FP)$.  Amongst other things, I'd want to know:
+
+  * in determining the operating threshold, were true positives and false negatives given equal weight ? For example, in the context of predicting a rare but serious event, a false negative can be orders-of-magnitude more 'costly' than the model correctly determining cases that are true positives or true negatives.
+  
+  * in the example above, $F(x) = 0.79$ is 0.01 below the operating threshold for declaring a *positive* case -- boundary cases near the operating threshold, demand closer inspection and at least, consideration of the **uncertainty** in the output of $F$.  
+
+A more elaborate version of this discussion is [here](https://github.com/danwjoyce/summ-performance/blob/master/revised_predictive_decisions.pdf) and summarised in a [short paper](https://jamanetwork.com/journals/jamapsychiatry/article-abstract/2758828).
+
+So, the problem of 'declaring' a prediction can be cast as a problem in statistical [decision theory](https://en.wikipedia.org/wiki/Decision_theory).  Being only vaguely familiar with similar ideas from signal detection models in psychophysics [@green1966signal], I decided to deep-dive into the details of using posterior distributions to arrive at decisions via loss and risk functions.  I found the ideas are fairly intuitive and are well described e.g. in [@duda2012pattern] and [@bishop2006pattern].  It was harder for me to operationalise these; for example, I frequently found explainations that the $L_0$ "zero-one" loss function delivers the mode of a (posterior) distribution, but examples of this in action were harder to come by.   
+
+# Predictions {#sec-predictions}
+
+As above, assume we have a model $F(x)$ that delivers a continuous score $Y$ for an outcome/case/event given some "input" measurement or feature(s), $x$ for a patient.  Importantly, the model delivers outputs in the form of posterior probabilities $\Pr(Y=y|x)$;  for example, the probability of being a positive case is $\Pr(Y=1|x)$ and  $\Pr(Y=0|x) = 1 - \Pr(Y=1|x)$ being the probability of a negative case.  
+
+So for any patient $x$, we will have a posterior distribution -- rather than a single *point* summary.
+
+This is an important distinction: after inferring (learning) a model that delivers posterior probabilities, we can then *deliberately* design and implement a decision process -- in contrast to solving the related problem of **discrimination** or **classification**, where we find a direct mapping from each input $x$ to a discrete, often binary, output and sacrifice an estimate of uncertainty (see Ch. 1.5 of [@bishop2006pattern] for more detail).  
+
+```{r echo = TRUE, results='hide', warning = FALSE, message = FALSE}
 rm( list = ls() )
 knitr::opts_chunk$set(echo = TRUE)
 require(ggplot2)
@@ -38,37 +67,6 @@ basictheme <- theme_minimal() +
 
 # Some helper functions
 range01 <- function(x){(x-min(x))/(max(x)-min(x))}
-
-```
-
-# Introduction {#sec-introduction}
-For a while, I've been thinking about the deployment of predictive algorithms in clinical decision support.  Specifically, about the difference between what we understand about a model's performance from the publication describing it and how this might be less informative when deployed.  In short: what is the value of knowing that a model has good balanced accuracy or a high area under the ROC curve when sat with a patient and using the tool to make a clinical decision.    
-
-Frequently in medical applications of machine learning we see summary measures of performance used to demonstrate the competence of the model typically reported as sensitivities, specificities, balanced accuracy, area under the ROC curve and so on.  These measures assume that for an input $x$ (a patient) we get an output $F(x) = y$ representing for example, "negative" or "positive" caseness.  
-
-If the system $F$ is designed to **classify** patients, then it will deliver discrete 'yes / no' answers e.g. $y \in \{0,1\}$; canonical examples include the [support-vector machine (SVM)](https://en.wikipedia.org/wiki/Support-vector_machine).  Baked-into these algorithms is a **decision rule** operating over a continuous value; in SVMs, for example, the decision rule classifies each patient by dichotomising the signed distance of $x$ from the class-seperating hyperplane.  If using a **classifier** makes sense in the context of it's clinical deployment you might want the algorithm to report a definitive dichotomised answer and summary measures like sensitivity and specificity (perhaps) make sense.
-
-Compare this with [logistic regression](https://en.wikipedia.org/wiki/Logistic_regression) (often used as if it were a classifier) where the purpose is to estimate the **probability of an event**, i.e. that a patient is positive or negative.  Often in these cases, the decision rule is 'bolted on' and that's when people invoke ROC curves and compute accuracies at an operating threshold that maximises the trade-off between sensitivity and specificity e.g. by [maximising Youden's J-statistic](https://en.wikipedia.org/wiki/Youden%27s_J_statistic).  It's here that the decision rule and it's deployment context matter.
-
-It seems to me that patients and clinicians would probably want more information than a pure classifier provides and most likely would prefer to know the **actual** continuous score -- the "output"" of $F(x)$.  
-
-Further, a patient and clinician might want to understand the decision rule and it's assumptions.  For example, assume for some deployed predictive model $F$ and a new patient such that $F(x) = 0.79$ and this represents (or is proportional to) the probability of being a positive case.  The predictive model being deployed has an operating threshold of $0.80$ for declaring a positive case and this threshold was determined by maximising the trade-off between sensitivity and specificity.  Recall that sensitivity is the ratio $TP/(TP+FN)$ and specificity is the ratio $TN/(TN+FP)$.  Amongst other things, I'd want to know:
-
-  * The operating threshold depends on the sensitivity and specificity: were true positives and false negatives given equal weight ? For example, in the context of predicting a rare but serious event, a false negative can be orders-of-magnitude more 'costly' than the model correctly determining cases that are true positives or true negatives.
-  
-  * In the example above, $F(x) = 0.79$ is 0.01 below the operating threshold for declaring a *positive* case -- boundary cases near the operating threshold, demand closer inspection and at least, consideration of the **uncertainty** in the output of $F$.  
-
-A more elaborate version of this discussion is [here](https://github.com/danwjoyce/summ-performance/blob/master/revised_predictive_decisions.pdf) and summarised in a [short paper](https://jamanetwork.com/journals/jamapsychiatry/article-abstract/2758828).
-
-So, the problem of 'declaring' a prediction can be cast as a problem in statistical [decision theory](https://en.wikipedia.org/wiki/Decision_theory).  Being only vaguely familiar with similar ideas from signal detection models in psychophysics [@green1966signal], I decided to deep-dive into the details of using posterior distributions to arrive at predictions via loss and risk functions.  I found the ideas are fairly intuitive and are well described e.g. in [@duda2012pattern] and [@bishop2006pattern].  It was harder for me to operationalise these; for example, I frequently found explainations that the $L_0$ "zero-one" loss function delivers the mode of a (posterior) distribution, but examples of this in action were harder to come by.   
-
-# Predictions {#sec-predictions}
-
-For the purposes of this discussion, assume we have a model $F(x)=y$ that delivers a continuous score $y$ for an outcome/case/event given some "input" measurement or feature(s), $x$ for a patient.  The model is either generative or discriminative but importantly, delivers outputs in the form of posterior probabilities $\Pr(Y=y|x)$;  for example, the probability of being a positive case is $\Pr(Y=1|x)$ and  $\Pr(Y=0|x) = 1 - \Pr(Y=1|x)$ being the probability of a negative case.  
-
-This is an important distinction: after inferring (learning) a model that delivers posterior probabilities, we can then *deliberately* design and implement a decision process -- in contrast to solving the related problem of **discrimination** or **classification**, where we find a direct mapping from each input $x$ to a discrete, often binary, output and sacrifice an estimate of uncertainty (see Ch. 1.5 of [@bishop2006pattern] for more detail).  
-
-```{r echo = FALSE}
 knitr::include_graphics("/img/prediction-classification.png")
 ```
 
@@ -266,9 +264,9 @@ print(risk.plot)
 ```
 
 # Optimal Decision {#sec-optimal-decision}
-Our question is now: what is the best **action** (candidate $a_{i}$) to choose as the point summary given the loss function $L_{0}$ and the posterior $\pi(Y|x)$?
+Our question is now: what is the best **action** -- or decision -- over our candidates $a_{i}$ to choose as the point summary given the loss function $L_{0}$ and the posterior $\pi(Y|x)$?
 
-The answer is, the $a_{i}$ that **minimises** the expected loss / risk.  Implementing this, we arrive at:
+The answer is, the $a_{i}$ that **minimises** the risk (expected loss).  Implementing this, we arrive at:
 
 ```{r echo = TRUE, fig.align='center', out.width="70%"}
 # find the $a_{i}$ that minimises the risk function
@@ -297,8 +295,8 @@ We can repeat the same process as for section \@ref(sec-loss) through \@ref(sec-
 The **linear loss** $L_{1}$ loss is defined as:
 $$
 L_{1}(a_{i},y_{j}) = \begin{cases}
-          c_{1} |a_{i} - y_{j}| & \text{ if } a \leq y_{j} \\
-          c_{2} |a_{i} - y_{j}| & \text{ if } a > y_{j} \\
+          c_{1} |a_{i} - y_{j}| & \text{ if } a_{i} \leq y_{j} \\
+          c_{2} |a_{i} - y_{j}| & \text{ if } a_{i} > y_{j} \\
     \end{cases}
 $$
 Where $c_{1}$ and $c_{2}$ are constants.  If $c_{1} = c_{2}$ we arrive at the **median** of the posterior, as follows:

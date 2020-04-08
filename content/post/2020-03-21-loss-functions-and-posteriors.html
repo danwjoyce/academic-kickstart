@@ -1,5 +1,5 @@
 ---
-title: Loss Functions and Posteriors
+title: Loss, Risk and Point Summaries of Posterior Distributions
 author: Dan W Joyce
 date: '2020-03-21'
 slug: loss-functions-and-posteriors
@@ -10,12 +10,11 @@ output:
     
 header-includes: \usepackage{amsmath}
 
-categories: []
+categories: [R code]
 tags:
   - posterior distribution
   - loss functions
   - risk
-  - R code
 image:
   caption: ''
   focal_point: ''
@@ -26,31 +25,43 @@ bibliography: [./risk-dec.bib]
 <script src="/rmarkdown-libs/kePrint/kePrint.js"></script>
 
 
-<div id="sec-introduction" class="section level1">
-<h1><span class="header-section-number">1</span> Introduction</h1>
 <p>For a while, I’ve been thinking about the deployment of predictive algorithms in clinical decision support. Specifically, about the difference between what we understand about a model’s performance from the publication describing it and how this might be less informative when deployed. In short: what is the value of knowing that a model has good balanced accuracy or a high area under the ROC curve when sat with a patient and using the tool to make a clinical decision.</p>
-<p>Frequently in medical applications of machine learning we see summary measures of performance used to demonstrate the competence of the model typically reported as sensitivities, specificities, balanced accuracy, area under the ROC curve and so on. These measures assume that for an input <span class="math inline">\(x\)</span> (a patient) we get an output <span class="math inline">\(F(x) = y\)</span> representing for example, “negative” or “positive” caseness.</p>
-<p>If the system <span class="math inline">\(F\)</span> is designed to <strong>classify</strong> patients, then it will deliver discrete ‘yes / no’ answers e.g. <span class="math inline">\(y \in \{0,1\}\)</span>; canonical examples include the <a href="https://en.wikipedia.org/wiki/Support-vector_machine">support-vector machine (SVM)</a>. Baked-into these algorithms is a <strong>decision rule</strong> operating over a continuous value; in SVMs, for example, the decision rule classifies each patient by dichotomising the signed distance of <span class="math inline">\(x\)</span> from the class-seperating hyperplane. If using a <strong>classifier</strong> makes sense in the context of it’s clinical deployment you might want the algorithm to report a definitive dichotomised answer and summary measures like sensitivity and specificity (perhaps) make sense.</p>
+<p>Frequently in medical applications of machine learning we see summary measures of performance used to demonstrate the competence of the model typically reported as sensitivities, specificities, balanced accuracy, area under the ROC curve and so on. These measures assume that for an input <span class="math inline">\(x\)</span> (a patient) we get an output <span class="math inline">\(Y = F(x)\)</span> representing for example, “negative” or “positive” caseness.</p>
+<p>If the system <span class="math inline">\(F\)</span> is designed to <strong>classify</strong> patients, then it will deliver discrete ‘yes / no’ answers e.g. <span class="math inline">\(Y \in \{0,1\}\)</span>; canonical examples include the <a href="https://en.wikipedia.org/wiki/Support-vector_machine">support-vector machine (SVM)</a>. Baked-into these algorithms is a <strong>decision rule</strong> operating over a continuous value; in SVMs, for example, the decision rule classifies each patient by dichotomising the signed distance of <span class="math inline">\(x\)</span> from the class-seperating hyperplane. If using a <strong>classifier</strong> makes sense in the context of it’s clinical deployment you might want the algorithm to report a definitive dichotomised answer and summary measures like sensitivity and specificity (perhaps) make sense.</p>
 <p>Compare this with <a href="https://en.wikipedia.org/wiki/Logistic_regression">logistic regression</a> (often used as if it were a classifier) where the purpose is to estimate the <strong>probability of an event</strong>, i.e. that a patient is positive or negative. Often in these cases, the decision rule is ‘bolted on’ and that’s when people invoke ROC curves and compute accuracies at an operating threshold that maximises the trade-off between sensitivity and specificity e.g. by <a href="https://en.wikipedia.org/wiki/Youden%27s_J_statistic">maximising Youden’s J-statistic</a>. It’s here that the decision rule and it’s deployment context matter.</p>
 <p>It seems to me that patients and clinicians would probably want more information than a pure classifier provides and most likely would prefer to know the <strong>actual</strong> continuous score – the “output”&quot; of <span class="math inline">\(F(x)\)</span>.</p>
-<p>Further, a patient and clinician might want to understand the decision rule and it’s assumptions. For example, assume for some deployed predictive model <span class="math inline">\(F\)</span> and a new patient such that <span class="math inline">\(F(x) = 0.79\)</span> and this represents (or is proportional to) the probability of being a positive case. The predictive model being deployed has an operating threshold of <span class="math inline">\(0.80\)</span> for declaring a positive case and this threshold was determined by maximising the trade-off between sensitivity and specificity. Recall that sensitivity is the ratio <span class="math inline">\(TP/(TP+FN)\)</span> and specificity is the ratio <span class="math inline">\(TN/(TN+FP)\)</span>. Amongst other things, I’d want to know:</p>
+<p>Further, a patient and clinician might want to understand the decision rule and it’s assumptions. For example, assume for a deployed predictive model <span class="math inline">\(F\)</span> and a new patient, <span class="math inline">\(F(x) = 0.79\)</span> and this represents (or is proportional to) the likelihood of being a positive case. The predictive model being deployed has an operating threshold of <span class="math inline">\(0.80\)</span> for declaring a positive case and this threshold was determined by maximising the trade-off between sensitivity and specificity. Recall that sensitivity is the ratio <span class="math inline">\(TP/(TP+FN)\)</span> and specificity is the ratio <span class="math inline">\(TN/(TN+FP)\)</span>. Amongst other things, I’d want to know:</p>
 <ul>
-<li><p>The operating threshold depends on the sensitivity and specificity: were true positives and false negatives given equal weight ? For example, in the context of predicting a rare but serious event, a false negative can be orders-of-magnitude more ‘costly’ than the model correctly determining cases that are true positives or true negatives.</p></li>
-<li><p>In the example above, <span class="math inline">\(F(x) = 0.79\)</span> is 0.01 below the operating threshold for declaring a <em>positive</em> case – boundary cases near the operating threshold, demand closer inspection and at least, consideration of the <strong>uncertainty</strong> in the output of <span class="math inline">\(F\)</span>.</p></li>
+<li><p>in determining the operating threshold, were true positives and false negatives given equal weight ? For example, in the context of predicting a rare but serious event, a false negative can be orders-of-magnitude more ‘costly’ than the model correctly determining cases that are true positives or true negatives.</p></li>
+<li><p>in the example above, <span class="math inline">\(F(x) = 0.79\)</span> is 0.01 below the operating threshold for declaring a <em>positive</em> case – boundary cases near the operating threshold, demand closer inspection and at least, consideration of the <strong>uncertainty</strong> in the output of <span class="math inline">\(F\)</span>.</p></li>
 </ul>
 <p>A more elaborate version of this discussion is <a href="https://github.com/danwjoyce/summ-performance/blob/master/revised_predictive_decisions.pdf">here</a> and summarised in a <a href="https://jamanetwork.com/journals/jamapsychiatry/article-abstract/2758828">short paper</a>.</p>
-<p>So, the problem of ‘declaring’ a prediction can be cast as a problem in statistical <a href="https://en.wikipedia.org/wiki/Decision_theory">decision theory</a>. Being only vaguely familiar with similar ideas from signal detection models in psychophysics <span class="citation">(Green and Swets 1966)</span>, I decided to deep-dive into the details of using posterior distributions to arrive at predictions via loss and risk functions. I found the ideas are fairly intuitive and are well described e.g. in <span class="citation">(Duda, Hart, and Stork 2012)</span> and <span class="citation">(Bishop 2006)</span>. It was harder for me to operationalise these; for example, I frequently found explainations that the <span class="math inline">\(L_0\)</span> “zero-one” loss function delivers the mode of a (posterior) distribution, but examples of this in action were harder to come by.</p>
-</div>
+<p>So, the problem of ‘declaring’ a prediction can be cast as a problem in statistical <a href="https://en.wikipedia.org/wiki/Decision_theory">decision theory</a>. Being only vaguely familiar with similar ideas from signal detection models in psychophysics <span class="citation">(Green and Swets 1966)</span>, I decided to deep-dive into the details of using posterior distributions to arrive at decisions via loss and risk functions. I found the ideas are fairly intuitive and are well described e.g. in <span class="citation">(Duda, Hart, and Stork 2012)</span> and <span class="citation">(Bishop 2006)</span>. It was harder for me to operationalise these; for example, I frequently found explainations that the <span class="math inline">\(L_0\)</span> “zero-one” loss function delivers the mode of a (posterior) distribution, but examples of this in action were harder to come by.</p>
 <div id="sec-predictions" class="section level1">
-<h1><span class="header-section-number">2</span> Predictions</h1>
-<p>For the purposes of this discussion, assume we have a model <span class="math inline">\(F(x)=y\)</span> that delivers a continuous score <span class="math inline">\(y\)</span> for an outcome/case/event given some “input” measurement or feature(s), <span class="math inline">\(x\)</span> for a patient. The model is either generative or discriminative but importantly, delivers outputs in the form of posterior probabilities <span class="math inline">\(\Pr(Y=y|x)\)</span>; for example, the probability of being a positive case is <span class="math inline">\(\Pr(Y=1|x)\)</span> and <span class="math inline">\(\Pr(Y=0|x) = 1 - \Pr(Y=1|x)\)</span> being the probability of a negative case.</p>
+<h1><span class="header-section-number">1</span> Predictions</h1>
+<p>As above, assume we have a model <span class="math inline">\(F(x)\)</span> that delivers a continuous score <span class="math inline">\(Y\)</span> for an outcome/case/event given some “input” measurement or feature(s), <span class="math inline">\(x\)</span> for a patient. Importantly, the model delivers outputs in the form of posterior probabilities <span class="math inline">\(\Pr(Y=y|x)\)</span>; for example, the probability of being a positive case is <span class="math inline">\(\Pr(Y=1|x)\)</span> and <span class="math inline">\(\Pr(Y=0|x) = 1 - \Pr(Y=1|x)\)</span> being the probability of a negative case.</p>
+<p>So for any patient <span class="math inline">\(x\)</span>, we will have a posterior distribution – rather than a single <em>point</em> summary.</p>
 <p>This is an important distinction: after inferring (learning) a model that delivers posterior probabilities, we can then <em>deliberately</em> design and implement a decision process – in contrast to solving the related problem of <strong>discrimination</strong> or <strong>classification</strong>, where we find a direct mapping from each input <span class="math inline">\(x\)</span> to a discrete, often binary, output and sacrifice an estimate of uncertainty (see Ch. 1.5 of <span class="citation">(Bishop 2006)</span> for more detail).</p>
-<p><img src="/img/prediction-classification.png" /><!-- --></p>
+<pre class="r"><code>rm( list = ls() )
+knitr::opts_chunk$set(echo = TRUE)
+require(ggplot2)
+require(gridExtra)
+require(kableExtra)
+require(latex2exp)
+# globals for presentation
+basictheme &lt;- theme_minimal() + 
+  theme(axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        plot.title = element_text(size = rel(1.25), face = &quot;bold&quot;, hjust = 0.5 ))
+
+# Some helper functions
+range01 &lt;- function(x){(x-min(x))/(max(x)-min(x))}
+knitr::include_graphics(&quot;/img/prediction-classification.png&quot;)</code></pre>
 <p>We are used to seeing <em>point estimates</em> as outputs from predictive models given some input e.g. <span class="math inline">\(\Pr( Y = 1 | x) = 0.78\)</span> and sometimes, with a measure of uncertainty on that output (for example, the standard error on predicted values from <a href="https://stat.ethz.ch/R-manual/R-devel/library/stats/html/predict.glm.html"><code>predict.glm()</code></a> in <code>R</code>).</p>
 <p>This point value is a summary of the <a href="https://en.wikipedia.org/wiki/Probability_distribution">posterior distribution</a> of <span class="math inline">\(Y\)</span> (for example, the mean) and represents the output of a decision making process.</p>
 </div>
 <div id="setup" class="section level1">
-<h1><span class="header-section-number">3</span> Setup</h1>
+<h1><span class="header-section-number">2</span> Setup</h1>
 <p>Assume that for some predictive model, we present a single patient <span class="math inline">\(x\)</span> and we are able to access the posterior distribution of <span class="math inline">\(Y\)</span> given <span class="math inline">\(x\)</span> i.e. we can obtain samples from the posterior distribution for that patient denoted <span class="math inline">\(\pi(Y|x)\)</span>; for example:</p>
 <pre class="r"><code># to ensure reproducible result
 set.seed(3141)
@@ -158,7 +169,7 @@ P
 <p>With some abuse of notation, we can state that (approximately) <span class="math inline">\(\pi(Y=0.55|x) = 0.0285\)</span> and <span class="math inline">\(\pi(Y=0.59|x) = 0.0240\)</span>.</p>
 </div>
 <div id="sec-loss" class="section level1">
-<h1><span class="header-section-number">4</span> Loss Functions</h1>
+<h1><span class="header-section-number">3</span> Loss Functions</h1>
 <p>Consider the task of choosing a summary of the information contained in the posterior distribution <span class="math inline">\(\pi(Y|x)\)</span> as a single (point) value. We can see that the score <span class="math inline">\(Y\)</span> ranges from 0 to 1 and we could potentially pick any one of an infinite number of values as our chosen point summary (of course, some will be meaningful and others less so).</p>
 <p>To make this concrete, we’ll cheat and look-ahead to the answer. One meaningful decision to summarise <span class="math inline">\(\pi(Y|x)\)</span> is to choose the <strong>mode</strong>:</p>
 <pre class="r"><code>pdf.Y &lt;- pdfFromSamples(0, 1, delta = 1/100, samples )
@@ -245,7 +256,7 @@ L_0(a_{i},y_{j})\pi(y_{j}|x)
 <p>This leads us to consider the <strong>risk</strong> associated with each candidate. In essence, we want to know the loss associated with <span class="math inline">\(a_{i}\)</span> when the true value is <span class="math inline">\(y_{j}\)</span> weighted by how likely or how frequently we see <span class="math inline">\(y_{j}\)</span>.</p>
 </div>
 <div id="sec-risk-functions" class="section level1">
-<h1><span class="header-section-number">5</span> Risk Functions</h1>
+<h1><span class="header-section-number">4</span> Risk Functions</h1>
 <p>We could continue randomly choosing candidates but instead, we’ll be systematic and check all values of <span class="math inline">\(a_{i}\)</span>. At the same time, we’ll shift representation and instead of plotting the loss function for each candidate against the range of <span class="math inline">\(y_{j}\)</span>, we’ll compute a <strong>risk function</strong> for each candidate as the <a href="https://en.wikipedia.org/wiki/Expected_value">expected value</a> of the loss function evaluated for each <span class="math inline">\(a_{i}\)</span>:</p>
 <p><span class="math display">\[
 \mathbb{E}[L_0(a_{i},y_{j})] = \sum_{j} \underbrace{L_{0}(a_{i},y_{j})}_\text{loss} \underbrace{\pi(y_{j}|x)}_\text{posterior}
@@ -277,9 +288,9 @@ print(risk.plot)</code></pre>
 <p><img src="/post/2020-03-21-loss-functions-and-posteriors_files/figure-html/unnamed-chunk-9-1.png" width="70%" style="display: block; margin: auto;" /></p>
 </div>
 <div id="sec-optimal-decision" class="section level1">
-<h1><span class="header-section-number">6</span> Optimal Decision</h1>
-<p>Our question is now: what is the best <strong>action</strong> (candidate <span class="math inline">\(a_{i}\)</span>) to choose as the point summary given the loss function <span class="math inline">\(L_{0}\)</span> and the posterior <span class="math inline">\(\pi(Y|x)\)</span>?</p>
-<p>The answer is, the <span class="math inline">\(a_{i}\)</span> that <strong>minimises</strong> the expected loss / risk. Implementing this, we arrive at:</p>
+<h1><span class="header-section-number">5</span> Optimal Decision</h1>
+<p>Our question is now: what is the best <strong>action</strong> – or decision – over our candidates <span class="math inline">\(a_{i}\)</span> to choose as the point summary given the loss function <span class="math inline">\(L_{0}\)</span> and the posterior <span class="math inline">\(\pi(Y|x)\)</span>?</p>
+<p>The answer is, the <span class="math inline">\(a_{i}\)</span> that <strong>minimises</strong> the risk (expected loss). Implementing this, we arrive at:</p>
 <pre class="r"><code># find the $a_{i}$ that minimises the risk function
 min.risk.L0 &lt;- pdf.Y$mids[ which.min( pdf.Y$risk.L0 ) ]
 
@@ -298,12 +309,12 @@ print( risk.plot )</code></pre>
 </ul>
 </div>
 <div id="other-loss-functions" class="section level1">
-<h1><span class="header-section-number">7</span> Other Loss Functions</h1>
-<p>We can repeat the same process as for section <a href="#sec-loss">4</a> through <a href="#sec-optimal-decision">6</a> with different loss functions.</p>
+<h1><span class="header-section-number">6</span> Other Loss Functions</h1>
+<p>We can repeat the same process as for section <a href="#sec-loss">3</a> through <a href="#sec-optimal-decision">5</a> with different loss functions.</p>
 <p>The <strong>linear loss</strong> <span class="math inline">\(L_{1}\)</span> loss is defined as: <span class="math display">\[
 L_{1}(a_{i},y_{j}) = \begin{cases}
-          c_{1} |a_{i} - y_{j}| &amp; \text{ if } a \leq y_{j} \\
-          c_{2} |a_{i} - y_{j}| &amp; \text{ if } a &gt; y_{j} \\
+          c_{1} |a_{i} - y_{j}| &amp; \text{ if } a_{i} \leq y_{j} \\
+          c_{2} |a_{i} - y_{j}| &amp; \text{ if } a_{i} &gt; y_{j} \\
     \end{cases}
 \]</span> Where <span class="math inline">\(c_{1}\)</span> and <span class="math inline">\(c_{2}\)</span> are constants. If <span class="math inline">\(c_{1} = c_{2}\)</span> we arrive at the <strong>median</strong> of the posterior, as follows:</p>
 <pre class="r"><code># the linear loss function
